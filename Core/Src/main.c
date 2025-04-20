@@ -18,19 +18,66 @@
 /* USER CODE END Header */
 /* Includes ------------------------------------------------------------------*/
 #include "main.h"
-#include "Wav_func.h"
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
 
+#include "Wav_func.h"
 
+typedef struct
+{
+	float peak;
+	float rms;
+	float frequency;
+	float period;
 
+}signal;
 
 
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
 /* USER CODE BEGIN PTD */
+
+uint32_t IC_VAL1=0;
+uint32_t IC_VAL2=0;
+uint32_t diff=0;
+uint8_t is_Fist=0;
+float frequency=0;
+unsigned short counts[2];
+unsigned char index_test=0;
+void HAL_TIM_IC_CaptureCallback(TIM_HandleTypeDef *htim)
+{
+
+
+
+	frequency=0;
+	if(htim->Channel == HAL_TIM_ACTIVE_CHANNEL_1)
+	{
+		if(is_Fist== 0)
+		{
+			IC_VAL1= HAL_TIM_ReadCapturedValue(htim, TIM_CHANNEL_1);
+			is_Fist=1;
+		}
+		else
+		{
+			IC_VAL2 = HAL_TIM_ReadCapturedValue(htim, TIM_CHANNEL_1);
+			if(IC_VAL2> IC_VAL1)
+			{
+				diff  = IC_VAL2-IC_VAL1;
+			}else if(IC_VAL1>IC_VAL2)
+			{
+				diff = (0xffff-IC_VAL1)+ IC_VAL2;
+			}
+			float refClock = TIMCLOCK/(PRESCALAR);
+			frequency = refClock/diff;
+			__HAL_TIM_SET_COUNTER(htim,0);
+			is_Fist=0;
+		}
+	}
+
+
+}
 
 /* USER CODE END PTD */
 
@@ -58,11 +105,6 @@ UART_HandleTypeDef huart2;
 
 /* USER CODE BEGIN PV */
 
-void delay_us (uint16_t us)
-{
-	__HAL_TIM_SET_COUNTER(&htim1,0);  // set the counter value a 0
-	while (__HAL_TIM_GET_COUNTER(&htim1) < us);  // wait for the counter to reach the us input in the parameter
-}
 
 
 
@@ -77,8 +119,8 @@ static void MX_DMA_Init(void);
 static void MX_USART2_UART_Init(void);
 static void MX_DAC_Init(void);
 static void MX_TIM2_Init(void);
-static void MX_ADC1_Init(void);
 static void MX_TIM1_Init(void);
+static void MX_ADC1_Init(void);
 static void MX_TIM3_Init(void);
 /* USER CODE BEGIN PFP */
 
@@ -97,10 +139,7 @@ int main(void)
 {
 
   /* USER CODE BEGIN 1 */
-	uint32_t sine_value[SINOID_SIZE];
-	uint32_t buffer[SAMPLES];
-	float convValue[SAMPLES];
-	float amp;
+
 
   /* USER CODE END 1 */
 
@@ -126,18 +165,20 @@ int main(void)
   MX_USART2_UART_Init();
   MX_DAC_Init();
   MX_TIM2_Init();
-  MX_ADC1_Init();
   MX_TIM1_Init();
+  MX_ADC1_Init();
   MX_TIM3_Init();
   /* USER CODE BEGIN 2 */
-  float freq;
-
+  uint32_t sine_value[SINOID_SIZE];
   set_sinoid(sine_value,SINOID_SIZE);
   HAL_TIM_Base_Start(&htim1);
   HAL_TIM_Base_Start(&htim2);
   HAL_TIM_IC_Start_IT(&htim3,TIM_CHANNEL_1);
   HAL_DAC_Start_DMA(&hdac, DAC_CHANNEL_1, sine_value,SINOID_SIZE, DAC_ALIGN_12B_R);
   HAL_ADC_Init(&hadc1);
+
+
+
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -147,13 +188,21 @@ int main(void)
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
-	  freq=  get_frequency();
+	  	uint32_t buffer[SAMPLES];
+	  	float convValue[SAMPLES];
+	  	signal F_Signal;
+	  F_Signal.frequency=  frequency;
 	  get_sinoid(buffer, convValue,&hadc1, SAMPLES);
-	  amp=find_amp(convValue, SAMPLES);
-	  printf("AMP: %.2f\n\r",amp);
-	  printf("Freq: %.2f\n\r",freq);
+	  F_Signal.peak=find_amp(convValue, SAMPLES);
+	  //print_F32_arr(convValue, SAMPLES);
+	  F_Signal.rms= get_rms(F_Signal.peak);
 
-	  HAL_Delay(5000);
+	  printf("Peak: %.2f\n\r",F_Signal.peak);
+	  printf("RMS: %.2f\n\r",F_Signal.rms);
+	  printf("Freq: %.2f\n\r",frequency);
+
+	  HAL_Delay(2000);
+
   }
   /* USER CODE END 3 */
 }
@@ -226,7 +275,7 @@ static void MX_ADC1_Init(void)
   /** Configure the global features of the ADC (Clock, Resolution, Data Alignment and number of conversion)
   */
   hadc1.Instance = ADC1;
-  hadc1.Init.ClockPrescaler = ADC_CLOCK_SYNC_PCLK_DIV8;
+  hadc1.Init.ClockPrescaler = ADC_CLOCK_SYNC_PCLK_DIV4;
   hadc1.Init.Resolution = ADC_RESOLUTION_12B;
   hadc1.Init.ScanConvMode = DISABLE;
   hadc1.Init.ContinuousConvMode = DISABLE;
@@ -244,9 +293,9 @@ static void MX_ADC1_Init(void)
 
   /** Configure for the selected ADC regular channel its corresponding rank in the sequencer and its sample time.
   */
-  sConfig.Channel = ADC_CHANNEL_0;
+  sConfig.Channel = ADC_CHANNEL_1;
   sConfig.Rank = 1;
-  sConfig.SamplingTime = ADC_SAMPLETIME_84CYCLES;
+  sConfig.SamplingTime = ADC_SAMPLETIME_3CYCLES;
   if (HAL_ADC_ConfigChannel(&hadc1, &sConfig) != HAL_OK)
   {
     Error_Handler();
@@ -408,7 +457,7 @@ static void MX_TIM3_Init(void)
 
   /* USER CODE END TIM3_Init 1 */
   htim3.Instance = TIM3;
-  htim3.Init.Prescaler = 84-1;
+  htim3.Init.Prescaler = 0;
   htim3.Init.CounterMode = TIM_COUNTERMODE_UP;
   htim3.Init.Period = 65535;
   htim3.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
@@ -513,7 +562,10 @@ static void MX_GPIO_Init(void)
   __HAL_RCC_GPIOB_CLK_ENABLE();
 
   /*Configure GPIO pin Output Level */
-  HAL_GPIO_WritePin(LD2_GPIO_Port, LD2_Pin, GPIO_PIN_RESET);
+  HAL_GPIO_WritePin(GPIOC, GPIO_PIN_0, GPIO_PIN_RESET);
+
+  /*Configure GPIO pin Output Level */
+  HAL_GPIO_WritePin(GPIOA, GPIO_PIN_6|GPIO_PIN_7, GPIO_PIN_RESET);
 
   /*Configure GPIO pin : B1_Pin */
   GPIO_InitStruct.Pin = B1_Pin;
@@ -521,12 +573,19 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   HAL_GPIO_Init(B1_GPIO_Port, &GPIO_InitStruct);
 
-  /*Configure GPIO pin : LD2_Pin */
-  GPIO_InitStruct.Pin = LD2_Pin;
+  /*Configure GPIO pin : PC0 */
+  GPIO_InitStruct.Pin = GPIO_PIN_0;
   GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
-  HAL_GPIO_Init(LD2_GPIO_Port, &GPIO_InitStruct);
+  HAL_GPIO_Init(GPIOC, &GPIO_InitStruct);
+
+  /*Configure GPIO pins : PA6 PA7 */
+  GPIO_InitStruct.Pin = GPIO_PIN_6|GPIO_PIN_7;
+  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
+  HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
 
 /* USER CODE BEGIN MX_GPIO_Init_2 */
 /* USER CODE END MX_GPIO_Init_2 */
@@ -538,6 +597,7 @@ int _write(int file, char *data, int len)
     HAL_UART_Transmit(&huart2, (uint8_t*)data, len, HAL_MAX_DELAY);
     return len;
 }
+
 
 
 /* USER CODE END 4 */

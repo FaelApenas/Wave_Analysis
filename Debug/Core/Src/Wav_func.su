@@ -1,6 +1,5 @@
 ../Core/Src/Wav_func.c:16:6:set_sinoid	32	static
 ../Core/Src/Wav_func.c:23:7:get_sinoid	64	dynamic
-../Core/Src/Wav_func.c:41:6:HAL_TIM_IC_CaptureCallback	24	static
-../Core/Src/Wav_func.c:70:7:get_frequency	4	static
-../Core/Src/Wav_func.c:74:7:find_amp	24	static
-../Core/Src/Wav_func.c:84:6:print_F32_arr	24	static
+../Core/Src/Wav_func.c:44:7:find_amp	24	static
+../Core/Src/Wav_func.c:54:6:print_F32_arr	24	static
+../Core/Src/Wav_func.c:61:7:get_rms	16	static
